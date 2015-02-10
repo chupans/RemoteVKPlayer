@@ -1,4 +1,5 @@
 import vk
+import argparse
 import sys
 import time
 from enum import Enum
@@ -153,8 +154,11 @@ class VKMusic:
                 pass
 
 if __name__ == "__main__":
-    _login = "*"
-    _password = "*"
+    parser = argparse.ArgumentParser(description='VKMusic remote player')
+    parser.add_argument('login', help='Your vk login')
+    parser.add_argument('password', help='Your vk password')
 
-    mus = VKMusic(_login, _password)
+    args = parser.parse_args()
+
+    mus = VKMusic(args.login, args.password)
     mus.worker()
