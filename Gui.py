@@ -45,8 +45,8 @@ if __name__ == "__main__":
     ctx = engine.rootContext()
     ctx.setContextProperty("RemoteMusicPlayerGUI", engine)
 
-    qml = r'D:/work/RemoteMusicPlayerGUI/RemoteMusicPlayerGUI/RemoteMusicPlayerGUI.qml'
-    engine.load(qml)
+    qml = r'D:/work/RemoteMusicPlayer/Gui/main.qml'
+    a = engine.load(qml)
 
     window = engine.rootObjects()[0]
     window.show()

@@ -1,45 +1,55 @@
 import vk
 import argparse
+import time
 import sys
 import time
+import tempfile
 from enum import Enum
 from urllib import parse, request
 import re
 from selenium import webdriver
-import pydub
-from pygame import mixer
+from pyglet import media
 
 
 class MusPlayer:
     def __init__(self):
-        self.song = ''
+        self.song_ = media.Source
         self.volume_ = 1.0
         self.paused = False
-        mixer.init()
+        self.player_ = media.Player()
 
     def launch(self, song):
         self.paused = False
-        mixer.music.load(song)
-        mixer.music.play()
-        mixer.music.set_volume(self.volume_)
+        self.song_ = media.load(filename=song)
+        for num in range(10, 0, -1):
+            self.set_volume(num/10.0)
+            time.sleep(0.05)
+
+        self.player_.queue(self.song_)
+        self.player_.play()
+        if self.player_.time != 0:
+            self.forward(0)
+        self.set_volume(1.0)
 
     def set_volume(self, volume):
         if 0.0 <= volume <= 1.0:
             self.volume_ = volume
-            mixer.music.set_volume(self.volume_)
+            self.player_.volume = self.volume_
 
     def pause(self):
         if self.paused:
-            mixer.music.unpause()
+            self.player_.play()
         else:
-            mixer.music.pause()
+            self.player_.pause()
         self.paused = not self.paused
 
     def stop(self):
-        mixer.music.stop()
+        self.player_.pause()
 
     def forward(self, val):
-        mixer.music.set_pos(val)
+        if 0.0 <= val <= 1.0:
+            seek_to = self.song_.duration * val
+            self.player_.seek(seek_to)
 
 class Commands(Enum):
     PLAY = 'play'
@@ -54,7 +64,6 @@ class VKMusic:
         self.tag = '#'
         self.login = login
         self.password = password
-        pydub.AudioSegment.converter = "c:/users/chup/desktop/ffmpeg.exe"
         self.player = MusPlayer()
 
     def get_token(self):
@@ -106,6 +115,14 @@ class VKMusic:
         return 'temp.mp3'
 
     @staticmethod
+    def temp_download_from(url):
+        r = request.urlopen(url)
+        data = r.read()
+        f = tempfile.SpooledTemporaryFile()
+        f.write(data)
+        return f
+
+    @staticmethod
     def isint(value):
         try:
             int(value)
@@ -129,11 +146,7 @@ class VKMusic:
                         audio = vkapi.audio.search(q=command, count='1')['items'][0]['url']
 
                         mp3_song = self.download_from(audio)
-                        #with open(mp3_song.name, 'rb') as sng:
-                        audio = pydub.AudioSegment.from_mp3(mp3_song)
-                        self.player.stop()
-                        audio.export('temp{0}.wav'.format(a), format='wav')
-                        self.player.launch('temp{0}.wav'.format(a))
+                        self.player.launch(mp3_song)
                         a += 1
                     elif command_type == Commands.PAUSE.value:
                         self.player.pause()
@@ -142,15 +155,14 @@ class VKMusic:
                             self.player.set_volume(float(command)/100)
                     elif command_type == Commands.TIME.value:
                         if VKMusic.isint(command):
-                            self.player.forward(float(command)/50)
-                        pass
+                            self.player.forward(float(command)/100)
 
                     vkapi.messages.delete(message_ids=messages['items'][0]['id'])
                 else:
                     time.sleep(1)
             except:
-                vkapi.messages.send(user_id=user_id, guid=a, message='Exception occured: ' + str(sys.exc_info()[0]) + str(a))
-                a += 1
+                #vkapi.messages.send(user_id=user_id, guid=a, message='Exception occured: ' + str(sys.exc_info()[0]) + str(a))
+                print(str(sys.exc_info()[0]))
                 pass
 
 if __name__ == "__main__":

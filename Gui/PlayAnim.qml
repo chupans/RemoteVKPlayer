@@ -9,12 +9,14 @@ Item {
 
   Rectangle {
     id: bar1
+    color: "black"
     transformOrigin: Item.Center
     antialiasing: true
   }
 
   Rectangle {
     id: bar2
+    color: "black"
     antialiasing: true
   }
   Canvas {
@@ -23,8 +25,8 @@ Item {
       height:72
       antialiasing: true
 
-      property string strokeStyle:"white"
-      property string fillStyle:"white"
+      property string strokeStyle:"black"
+      property string fillStyle:"black"
       property int lineWidth:1
       property bool fill:true
       property bool stroke:true
