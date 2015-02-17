@@ -2,20 +2,29 @@ import QtQuick 2.4
 import Material 0.1
 
 ApplicationWindow {
-    title: qsTr("VK Remote Server")
+    id: main
     width: 500
     height: 500
     visible: true
 
-    theme {
-        accentColor: "#009688"
-    }
+    property var pages: ["LogonPage.qml", "PlayerPage.qml"]
+    property string selectedPage: pages[0]
 
-    LogonPage{
-        id: abr
+    function connected(){}
+    signal disconnected(string reason)
+    onDisconnected: { abr.info = reason}
+
+    property alias abr: page.item
+
+    Loader {
+        id: page
         anchors.centerIn: parent
+        source: Qt.resolvedUrl(selectedPage)
+        asynchronous: true
     }
-    Component.onCompleted: {
-         pageStack.push(Qt.resolvedUrl("LogonPage.qml"))
-     }
+    Connections {
+        target: page.item
+        onConnected: { selectedPage = pages[1]}
+    }
+    Component.onCompleted: { disconnected("asdasd")}
 }
