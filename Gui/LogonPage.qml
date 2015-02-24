@@ -3,9 +3,6 @@ import Material 0.1
 
 Item {
     id: root
-    signal connected()
-    signal disconnected(string reason)
-    onDisconnected: {info = reason}
     property alias info: infoLabel.text
     Column {
         id: tabLogon
@@ -32,7 +29,8 @@ Item {
 
         function switchState()
         {
-            state = state === "connecting" ? "" : "connecting"
+            state = state === "connecting" ? "" : "connecting";
+            connectButton.visible = !connectButton.visible
         }
 
         Button {
@@ -40,11 +38,11 @@ Item {
             text: "Connect"
             elevation: 1
             anchors.horizontalCenter: parent.horizontalCenter
-            onClicked: {tabLogon.switchState(); root.connected()}
+            onClicked: {guiController.connect(loginField.text, passwordField.text); infoLabel.text = ""; tabLogon.switchState();}
         }
         Label {
             id: infoLabel
-            text: "asdas"
+            text: ""
             color: Theme.light.textColor
         }
         states: [
@@ -57,5 +55,8 @@ Item {
 
         ]
     }
-
+    Connections {
+        target: guiController
+        onDisc: { info = reason; tabLogon.switchState(); }
+    }
 }

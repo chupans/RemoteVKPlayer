@@ -1,13 +1,13 @@
 import vk
 import argparse
-import time
+import VkAuth
 import sys
 import time
 import tempfile
+import threading
 from enum import Enum
-from urllib import parse, request
+from urllib import request
 import re
-from selenium import webdriver
 from pyglet import media
 
 
@@ -60,39 +60,33 @@ class Commands(Enum):
 
 class VKMusic:
 
-    def __init__(self, login, password):
+    def __init__(self, connect_cb, disconnect_cb, newSong_cb, pause_cb):
         self.tag = '#'
-        self.login = login
-        self.password = password
+        self.login = ''
+        self.password = ''
         self.player = MusPlayer()
+        self.doConnect = False
+        self.running = False
+        self.connected = False
+        self.t = threading.Thread(target=self.worker)
+        self.t.daemon = True
+        self.exit = ''
+        self.connectCallback = connect_cb
+        self.disconnectCallback = disconnect_cb
+        self.newSongCallback = newSong_cb
+        self.pauseCallback = pause_cb
 
     def get_token(self):
-        driver = webdriver.Firefox()
-
-        parameters = {
-            'client_id': 4545547,
-            'scope': 'messages,audio',
-            'redirect_uri': 'https://oauth.vk.com/blank.html',
-            'response_type': 'token',
-        }
-
-        driver.get(r"http://api.vkontakte.ru/oauth/authorize?%s" % parse.urlencode(parameters))
-
-        user_input = driver.find_element_by_name("email")
-        user_input.send_keys(self.login)
-        password_input = driver.find_element_by_name("pass")
-        password_input.send_keys(self.password)
-
-        submit = driver.find_element_by_id("install_allow")
-        submit.click()
-
-        result_link = driver.current_url
-        driver.close()
-
-        token = re.search('access_token=([0-9A-Za-z]+)&', result_link).group(1)
-        id = re.search('user_id=([0-9A-Za-z]+)', result_link).group(1)
+        token, id = VkAuth.auth(self.login, self.password, '4545547', 'messages,audio')
 
         return token, id
+
+    def connect(self, login, password):
+        self.start_worker()
+        self.login = login
+        self.password = password
+        self.doConnect = True
+
 
     def extract_command(self, cmd_string):
         a = re.search('(' + self.tag + ')([0-9A-Za-z]+)', cmd_string)
@@ -130,15 +124,32 @@ class VKMusic:
         except ValueError:
             return False
 
-    def worker(self):
-        token, user_id = self.get_token()
-        vkapi = vk.API(access_token=token)
+    def start_worker(self):
+        if not self.running:
+            self.t.start()
+            self.running = True
 
-        exit = ''
+    def stop_worker(self):
+        self.exit = 'exit'
+
+    def worker(self):
+        while not self.connected:
+            if self.doConnect:
+                try:
+                    token, user_id = self.get_token()
+                    vkapi = vk.API(access_token=token)
+                    self.connectCallback()
+                    self.connected = True
+                except:
+                    self.disconnectCallback("Something went wrong. Check login and password")
+                    self.doConnect = False
+            else:
+                time.sleep(0.5)
+
         a = 1
-        while exit is '':
+        while self.exit is '':
             try:
-                messages = vkapi.messages.getHistory(user_id=user_id, count = '1')
+                messages = vkapi.messages.getHistory(user_id=user_id, count='1')
                 command = messages['items'][0]['body']
                 if self.is_command(command):
                     command_type, command = self.extract_command(command)

@@ -51,6 +51,9 @@ Item {
             }
 
         }
+        Connections {
+            target: guiController
+            onNewSong: { info = reason; tabLogon.switchState(); }
+        }
     }
-
 }

@@ -9,13 +9,6 @@ ApplicationWindow {
 
     property var pages: ["LogonPage.qml", "PlayerPage.qml"]
     property string selectedPage: pages[0]
-
-    function connected(){}
-    signal disconnected(string reason)
-    onDisconnected: { abr.info = reason}
-
-    property alias abr: page.item
-
     Loader {
         id: page
         anchors.centerIn: parent
@@ -26,5 +19,8 @@ ApplicationWindow {
         target: page.item
         onConnected: { selectedPage = pages[1]}
     }
-    Component.onCompleted: { disconnected("asdasd")}
+    Connections {
+        target: guiController
+        onConn: { selectedPage = pages[1] }
+    }
 }

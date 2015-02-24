@@ -1,54 +1,56 @@
 import sys
+import music
+from functools import partial
 
 from PyQt5.QtGui import QGuiApplication
 from PyQt5.QtQml import QQmlApplicationEngine
+from PyQt5.QtCore import QObject, pyqtSlot, pyqtSignal
 
 
-#class Person(QObject):
-#    def __init__(self, parent=None):
-#        super(Person, self).__init__(parent)
-#
-#        # Initialise the value of the properties.
-#        self._width = 48
-#        self._height = 48
-#        self._color = '#9c27b0'
-#
-#    @pyqtProperty('QString')
-#    def color(self):
-#        return self._color
-#
-#    @color.setter
-#    def color(self, color):
-#        self._color = color
-#
-#
-#    @pyqtProperty(int)
-#    def width(self):
-#        return self._width
-#
-#    @width.setter
-#    def width(self, width):
-#        self._width = width
-#
-#
-#    @pyqtProperty(int)
-#    def height(self):
-#        return self._height
-#
-#    @height.setter
-#    def height(self, height):
-#        self._height = height
+class GuiController(QObject):
+    """Proxy class that handles all interactions with the su.Puzzle class.
+
+    This class does not have any UI elements. Instead it emits signals."""
+
+    disc = pyqtSignal(str, arguments=['reason'])
+    conn = pyqtSignal()
+    newSong = pyqtSignal(int, str, arguments=['value', 'name'])
+    pause = pyqtSignal()
+
+    def __init__(self):
+        super(GuiController, self).__init__()
+        self.setup_mode = False
+        self.mus = music.VKMusic(partial(self.conn.emit), partial(self.disc.emit), partial(self.newSong.emit), partial(self.pause.emit))
+
+    def test(self):
+        self.disc.emit('succ')
+
+    @pyqtSlot()
+    def abr(self):
+        """Setup a random puzzle with a minimum number of assigned squares."""
+        self.disc.emit('succ')
+
+    @pyqtSlot(str, str)
+    def connect(self, login, password):
+        self.mus.connect(login, password)
+        i = 2
+
+    def stop(self):
+        self.mus.stop_worker()
+
 
 if __name__ == "__main__":
     app = QGuiApplication(sys.argv)
     engine = QQmlApplicationEngine()
     ctx = engine.rootContext()
+    guiController = GuiController()
+    ctx.setContextProperty('guiController', guiController)
     ctx.setContextProperty("RemoteMusicPlayerGUI", engine)
 
     qml = r'D:/work/RemoteMusicPlayer/Gui/main.qml'
     a = engine.load(qml)
 
-    window = engine.rootObjects()[0]
-    window.show()
+    app.exec_()
+    guiController.stop()
 
-    sys.exit(app.exec_())
+    sys.exit()
