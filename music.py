@@ -7,6 +7,7 @@ import tempfile
 import threading
 from enum import Enum
 from urllib import request
+import json
 import re
 from pyglet import media
 
@@ -60,7 +61,7 @@ class Commands(Enum):
 
 class VKMusic:
 
-    def __init__(self, connect_cb, disconnect_cb, newSong_cb, pause_cb):
+    def __init__(self, connect_cb, disconnect_cb, newSong_cb, pause_cb, debug=False):
         self.tag = '#'
         self.login = ''
         self.password = ''
@@ -75,6 +76,7 @@ class VKMusic:
         self.disconnectCallback = disconnect_cb
         self.newSongCallback = newSong_cb
         self.pauseCallback = pause_cb
+        self.debug = debug
 
     def get_token(self):
         token, id = VkAuth.auth(self.login, self.password, '4545547', 'messages,audio')
@@ -82,7 +84,8 @@ class VKMusic:
         return token, id
 
     def connect(self, login, password):
-        self.start_worker()
+        if not self.debug:
+            self.start_worker()
         self.login = login
         self.password = password
         self.doConnect = True
@@ -138,41 +141,52 @@ class VKMusic:
                 try:
                     token, user_id = self.get_token()
                     vkapi = vk.API(access_token=token)
-                    self.connectCallback()
+                    if self.connectCallback is not None:
+                        self.connectCallback()
                     self.connected = True
                 except:
-                    self.disconnectCallback("Something went wrong. Check login and password")
+                    if self.disconnectCallback is not None:
+                        self.disconnectCallback("Something went wrong. Check login and password")
                     self.doConnect = False
             else:
                 time.sleep(0.5)
 
-        a = 1
+        error = 1
+        server_info = vkapi.messages.getLongPollServer(use_ssl='1', need_pt='1')
+        messages = vkapi.messages.getHistory(user_id=user_id, count='1')
+
+        query = 'https://{}?act=a_check&key={}&ts={}&wait=25&mode=2'
+        ts = server_info['ts']
         while self.exit is '':
             try:
-                messages = vkapi.messages.getHistory(user_id=user_id, count='1')
-                command = messages['items'][0]['body']
-                if self.is_command(command):
-                    command_type, command = self.extract_command(command)
-                    if command_type == Commands.PLAY.value:
-                        audio = vkapi.audio.search(q=command, count='1')['items'][0]['url']
+                command = ''
+                res = request.urlopen(query.format(server_info['server'], server_info['key'], ts))
+                updates = json.loads(res.read().decode('utf-8'))
+                ts = updates['ts']
+                for update in updates['updates']:
+                    if len(update) > 3 and update[0] == 4 and update[3] == int(user_id):
+                        command = {'text': update[6], 'id': update[1]}
 
+                if self.is_command(command['text']):
+                    command_type, command['text'] = self.extract_command(command['text'])
+                    if command_type == Commands.PLAY.value:
+                        audio = vkapi.audio.search(q=command['text'], count='1')['items'][0]['url']
                         mp3_song = self.download_from(audio)
                         self.player.launch(mp3_song)
-                        a += 1
+                        error += 1
                     elif command_type == Commands.PAUSE.value:
                         self.player.pause()
                     elif command_type == Commands.VOL.value:
-                        if VKMusic.isint(command):
-                            self.player.set_volume(float(command)/100)
+                        if VKMusic.isint(command['text']):
+                            self.player.set_volume(float(command['text'])/100)
                     elif command_type == Commands.TIME.value:
-                        if VKMusic.isint(command):
-                            self.player.forward(float(command)/100)
-
-                    vkapi.messages.delete(message_ids=messages['items'][0]['id'])
-                else:
-                    time.sleep(1)
+                        if VKMusic.isint(command['text']):
+                            self.player.forward(float(command['text'])/100)
+                    vkapi.messages.delete(message_ids=command['id'])
+            except ValueError as e:
+                print(e)
             except:
-                #vkapi.messages.send(user_id=user_id, guid=a, message='Exception occured: ' + str(sys.exc_info()[0]) + str(a))
+                #vkapi.messages.send(user_id=user_id, guid=error, message='Exception occured: ' + str(sys.exc_info()[0]) + str(error))
                 print(str(sys.exc_info()[0]))
                 pass
 
@@ -183,5 +197,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    mus = VKMusic(args.login, args.password)
+    mus = VKMusic(None, None, None, None, True)
+    mus.connect(args.login, args.password)
     mus.worker()
