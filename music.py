@@ -1,12 +1,12 @@
 import vk
 import argparse
-import VkAuth
 import sys
 import time
 import tempfile
 import threading
 from enum import Enum
 from urllib import request
+from requests.exceptions import RequestException
 import json
 import re
 from pyglet import media
@@ -52,12 +52,14 @@ class MusPlayer:
             seek_to = self.song_.duration * val
             self.player_.seek(seek_to)
 
+
 class Commands(Enum):
     PLAY = 'play'
     VOL = 'vol'
     PAUSE = 'pause'
     EXIT = 'exit'
     TIME = 'time'
+
 
 class VKMusic:
 
@@ -77,11 +79,8 @@ class VKMusic:
         self.newSongCallback = newSong_cb
         self.pauseCallback = pause_cb
         self.debug = debug
-
-    def get_token(self):
-        token, id = VkAuth.auth(self.login, self.password, '4545547', 'messages,audio')
-
-        return token, id
+        self.vkapi = None
+        self.user_id = ''
 
     def connect(self, login, password):
         if not self.debug:
@@ -89,7 +88,6 @@ class VKMusic:
         self.login = login
         self.password = password
         self.doConnect = True
-
 
     def extract_command(self, cmd_string):
         a = re.search('(' + self.tag + ')([0-9A-Za-z]+)', cmd_string)
@@ -135,54 +133,80 @@ class VKMusic:
     def stop_worker(self):
         self.exit = 'exit'
 
+    def connect_to_longpoll(self):
+        try:
+            server_info = self.vkapi.messages.getLongPollServer(use_ssl='1', need_pt='1')
+            print('Connected to longPoll server: ' + server_info['server'])
+            return server_info
+        except RequestException as e:
+            print('Failed to connect to longPoll Server. Reason: {}' + e)
+            return None
+
+    def exec_command(self, command):
+        command_type, command['text'] = self.extract_command(command['text'])
+        if command_type == Commands.PLAY.value:
+            audio = self.vkapi.audio.search(q=command['text'], count='1')['items'][0]['url']
+            mp3_song = self.download_from(audio)
+            self.player.launch(mp3_song)
+        elif command_type == Commands.PAUSE.value:
+            self.player.pause()
+        elif command_type == Commands.VOL.value:
+            if VKMusic.isint(command['text']):
+                self.player.set_volume(float(command['text'])/100)
+        elif command_type == Commands.TIME.value:
+            if VKMusic.isint(command['text']):
+                self.player.forward(float(command['text'])/100)
+        elif command_type == Commands.EXIT.value:
+            self.exit = 'exit'
+        self.vkapi.messages.delete(message_ids=command['id'])
+
     def worker(self):
         while not self.connected:
             if self.doConnect:
                 try:
-                    token, user_id = self.get_token()
-                    vkapi = vk.API(access_token=token)
+                    self.vkapi = vk.API(user_login=self.login,user_password=self.password, app_id='4545547', scope='messages,audio', timeout=5)
+                    self.user_id = self.vkapi.users.get()[0]['id'];
                     if self.connectCallback is not None:
                         self.connectCallback()
                     self.connected = True
+                    print('Successfully connected. UserId = ' + str(self.user_id))
                 except:
                     if self.disconnectCallback is not None:
                         self.disconnectCallback("Something went wrong. Check login and password")
+                    print('Failed to connect')
                     self.doConnect = False
             else:
                 time.sleep(0.5)
 
-        error = 1
-        server_info = vkapi.messages.getLongPollServer(use_ssl='1', need_pt='1')
-        messages = vkapi.messages.getHistory(user_id=user_id, count='1')
+        attempts = 5
+        ts = 0
+        server_info = None
+        while attempts != 0 and server_info is None:
+            server_info = self.connect_to_longpoll()
+            attempts -= 1
+
+        if server_info is None:
+            print('Ran out of attempts to establish a connection with longPoll server. Exiting')
+            self.exit = 'exit'
+        else:
+            ts = server_info['ts']
 
         query = 'https://{}?act=a_check&key={}&ts={}&wait=25&mode=2'
-        ts = server_info['ts']
         while self.exit is '':
             try:
-                command = ''
+                messages = []
                 res = request.urlopen(query.format(server_info['server'], server_info['key'], ts))
                 updates = json.loads(res.read().decode('utf-8'))
                 ts = updates['ts']
                 for update in updates['updates']:
-                    if len(update) > 3 and update[0] == 4 and update[3] == int(user_id):
-                        command = {'text': update[6], 'id': update[1]}
+                    if len(update) > 3 and update[0] == 4 and update[3] == int(self.user_id):
+                        messages.append({'text': update[6], 'id': update[1]})
+                        print('Received new message: ' + update[6])
 
-                if self.is_command(command['text']):
-                    command_type, command['text'] = self.extract_command(command['text'])
-                    if command_type == Commands.PLAY.value:
-                        audio = vkapi.audio.search(q=command['text'], count='1')['items'][0]['url']
-                        mp3_song = self.download_from(audio)
-                        self.player.launch(mp3_song)
-                        error += 1
-                    elif command_type == Commands.PAUSE.value:
-                        self.player.pause()
-                    elif command_type == Commands.VOL.value:
-                        if VKMusic.isint(command['text']):
-                            self.player.set_volume(float(command['text'])/100)
-                    elif command_type == Commands.TIME.value:
-                        if VKMusic.isint(command['text']):
-                            self.player.forward(float(command['text'])/100)
-                    vkapi.messages.delete(message_ids=command['id'])
+                for message in messages:
+                    if self.is_command(message['text']):
+                        self.exec_command(message)
+
             except ValueError as e:
                 print(e)
             except:
